@@ -6,22 +6,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
 import androidx.glance.ImageProvider
-import androidx.glance.LocalContext
+import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.CheckBox
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.background
-import androidx.glance.color.ColorProviders
+import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -32,9 +37,9 @@ import androidx.glance.layout.wrapContentSize
 import androidx.glance.text.Text
 import androidx.glance.text.TextDecoration
 import androidx.glance.text.TextDefaults
-import androidx.glance.unit.ColorProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import me.yuji.glanceplayground.R
 import me.yuji.glanceplayground.data.DummyVocabularyRepository
 import me.yuji.glanceplayground.data.Vocabulary
@@ -45,8 +50,13 @@ class VocabularyWidget(
     private val vocabularyRepository: VocabularyRepository = DummyVocabularyRepository()
 ) : GlanceAppWidget() {
 
+    companion object {
+        private val PREF_KEY_SHOW_LEARNED = booleanPreferencesKey("show_learned")
+        private const val DEFAULT_SHOW_LEARNED = true
+    }
+
     private val vocabularyListStateFlow = MutableStateFlow(emptyList<Vocabulary>())
-    private val showLearnedStateFlow = MutableStateFlow(true)
+    private val showLearnedStateFlow = MutableStateFlow(DEFAULT_SHOW_LEARNED)
     private val uiStateFlow = combine(
         vocabularyListStateFlow,
         showLearnedStateFlow
@@ -57,18 +67,30 @@ class VocabularyWidget(
     override suspend fun provideGlance(context: Context, id: GlanceId) {
 
         provideContent {
+
+            val state: Preferences = currentState()
+
             GlanceTheme {
-                val uiState by uiStateFlow.collectAsState(initial = UiState(emptyList(), true))
+                val uiState by uiStateFlow.collectAsState(
+                    initial = UiState(emptyList(), state[PREF_KEY_SHOW_LEARNED] ?: DEFAULT_SHOW_LEARNED)
+                )
 
                 LaunchedEffect(Unit) {
+                    showLearnedStateFlow.value = state[PREF_KEY_SHOW_LEARNED] ?: DEFAULT_SHOW_LEARNED
                     val vocabularyList = vocabularyRepository.getAll()
                     vocabularyListStateFlow.value = vocabularyList
                 }
 
+                val coroutineScope = rememberCoroutineScope()
                 VocabularyWidgetContent(
                     uiState = uiState,
                     onToggleShowLearned = {
                         showLearnedStateFlow.value = !showLearnedStateFlow.value
+                        coroutineScope.launch {
+                            updateAppWidgetState(context, id) { pref ->
+                                pref[PREF_KEY_SHOW_LEARNED] = showLearnedStateFlow.value
+                            }
+                        }
                     },
                     onClick = { vocabulary -> navToDefinition(context, vocabulary) }
                 )
