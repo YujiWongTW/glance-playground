@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">GlancePlayground</string>
+    <string name="app_widget_description">Vocabulary List Widget</string>
+    <string name="app_widget_description_legacy">[Legacy] Vocabulary List Widget</string>
+</resources>
